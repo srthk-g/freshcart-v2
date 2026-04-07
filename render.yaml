@@ -1,0 +1,10 @@
+# Render.com configuration
+services:
+  - type: web
+    name: freshcart-grocery
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
