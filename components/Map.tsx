@@ -1,6 +1,6 @@
 'use client';
 
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { useEffect } from 'react';
 import 'leaflet/dist/leaflet.css';
@@ -46,6 +46,15 @@ function MapUpdater({ position }: { position: [number, number] }) {
   return null;
 }
 
+function DestinationSelector({ onSelect }: { onSelect?: (position: [number, number]) => void }) {
+  useMapEvents({
+    click(e) {
+      onSelect?.([e.latlng.lat, e.latlng.lng]);
+    },
+  });
+  return null;
+}
+
 // FitBounds on first load
 function FitRoute({ route }: { route: [number, number][] }) {
   const map = useMap();
@@ -66,6 +75,9 @@ interface MapProps {
   destinationPosition?: [number, number];
   route?: [number, number][];
   deliveredRoute?: [number, number][];
+  selectable?: boolean;
+  onDestinationSelect?: (position: [number, number]) => void;
+  hideDeliveryPartnerMarker?: boolean;
 }
 
 export default function DeliveryMap({
@@ -74,6 +86,9 @@ export default function DeliveryMap({
   destinationPosition = [19.1010, 72.9000],
   route = [],
   deliveredRoute = [],
+  selectable = false,
+  onDestinationSelect,
+  hideDeliveryPartnerMarker = false,
 }: MapProps) {
   return (
     <MapContainer
@@ -88,6 +103,7 @@ export default function DeliveryMap({
       />
       <MapUpdater position={deliveryPosition} />
       {route.length > 1 && <FitRoute route={route} />}
+      {selectable && <DestinationSelector onSelect={onDestinationSelect} />}
 
       {/* Full planned route — dashed light line */}
       {route.length > 1 && (
@@ -128,12 +144,14 @@ export default function DeliveryMap({
         </Popup>
       </Marker>
 
-      <Marker position={deliveryPosition} icon={deliveryIcon}>
-        <Popup>
-          <strong>Delivery Partner</strong><br />
-          Your order is on the way!
-        </Popup>
-      </Marker>
+      {!hideDeliveryPartnerMarker && (
+        <Marker position={deliveryPosition} icon={deliveryIcon}>
+          <Popup>
+            <strong>Delivery Partner</strong><br />
+            Your order is on the way!
+          </Popup>
+        </Marker>
+      )}
     </MapContainer>
   );
 }

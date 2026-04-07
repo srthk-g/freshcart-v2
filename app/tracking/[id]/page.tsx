@@ -66,6 +66,7 @@ export default function TrackingPage() {
   const [items, setItems] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [deliveryPos, setDeliveryPos] = useState<[number, number]>([19.0760, 72.8777]);
+  const [storePos, setStorePos] = useState<[number, number]>([19.0760, 72.8777]);
   const [currentStatus, setCurrentStatus] = useState('Order Placed');
   const [progress, setProgress] = useState(0);
   const [eta, setEta] = useState(5);
@@ -111,15 +112,22 @@ export default function TrackingPage() {
     if (!order) return;
     const socket = getSocket();
 
-    socket.emit('start-tracking', Number(orderId));
+    socket.emit('start-tracking', {
+      orderId: Number(orderId),
+      destinationLatitude: order.latitude,
+      destinationLongitude: order.longitude,
+    });
 
     socket.on('location-update', (data: {
       orderId: number; latitude: number; longitude: number;
       status: string; progress: number; eta: number;
       partner: DeliveryPartner; route: [number, number][];
+      storePosition?: [number, number]; destinationPosition?: [number, number];
     }) => {
       if (data.orderId === Number(orderId)) {
         setDeliveryPos([data.latitude, data.longitude]);
+        if (data.storePosition) setStorePos(data.storePosition);
+        if (data.destinationPosition) setDeliveryPos([data.latitude, data.longitude]);
         setCurrentStatus(data.status);
         setProgress(data.progress);
         setEta(data.eta);
@@ -196,6 +204,8 @@ export default function TrackingPage() {
         <div className="tracking-map">
           <DeliveryMap
             deliveryPosition={deliveryPos}
+            storePosition={storePos}
+            destinationPosition={[order.latitude, order.longitude]}
             route={route}
             deliveredRoute={deliveredRoute}
           />

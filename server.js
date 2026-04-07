@@ -7,9 +7,52 @@ const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
 const handle = app.getRequestHandler();
 
-// Store (CST Mumbai) and Destination (Dadar area)
-const STORE = { lat: 19.0760, lng: 72.8777 };
-const DESTINATION = { lat: 19.1010, lng: 72.9000 };
+// Delivery hubs around Mumbai, spaced roughly 10km apart for realistic dispatch.
+const HUBS = [
+  { name: 'Fort Mumbai', lat: 19.0760, lng: 72.8777 },
+  { name: 'Bandra', lat: 19.0556, lng: 72.8409 },
+  { name: 'Andheri', lat: 19.1196, lng: 72.8460 },
+  { name: 'Chembur', lat: 19.0414, lng: 72.8998 },
+  { name: 'Vikhroli', lat: 19.1043, lng: 72.9195 },
+  { name: 'Navi Mumbai', lat: 19.0330, lng: 73.0297 },
+];
+
+function getDistanceKm(lat1, lng1, lat2, lng2) {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const R = 6371; // Earth's radius in km
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function getNearestHub(destination) {
+  let best = HUBS[0];
+  let bestDistance = Infinity;
+  for (const hub of HUBS) {
+    const dist = getDistanceKm(destination.lat, destination.lng, hub.lat, hub.lng);
+    if (dist < bestDistance) {
+      bestDistance = dist;
+      best = hub;
+    }
+  }
+  return best;
+}
+
+function buildFallbackRoute(startLat, startLng, endLat, endLng) {
+  const points = [];
+  const steps = 80;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    points.push([
+      startLat + (endLat - startLat) * t,
+      startLng + (endLng - startLng) * t,
+    ]);
+  }
+  return points;
+}
 
 // Decode Google/OSRM encoded polyline into lat/lng pairs
 function decodePolyline(encoded) {
@@ -123,8 +166,16 @@ app.prepare().then(() => {
   io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
 
-    socket.on('start-tracking', async (orderId) => {
+    socket.on('start-tracking', async ({ orderId, destinationLatitude, destinationLongitude }) => {
       console.log('Start tracking order:', orderId);
+
+      const destination = {
+        lat: typeof destinationLatitude === 'number' ? destinationLatitude : 19.1010,
+        lng: typeof destinationLongitude === 'number' ? destinationLongitude : 72.9000,
+      };
+      const nearestHub = getNearestHub(destination);
+      const hubLocation = { lat: nearestHub.lat, lng: nearestHub.lng };
+      console.log(`Dispatching from nearest hub: ${nearestHub.name} (${hubLocation.lat}, ${hubLocation.lng}) to destination (${destination.lat}, ${destination.lng})`);
 
       // If already tracking this order, send current position + route
       if (activeDeliveries.has(orderId)) {
@@ -142,6 +193,8 @@ app.prepare().then(() => {
           eta,
           partner: deliveryPartner,
           route: delivery.fullRoute,
+          storePosition: delivery.storePosition,
+          destinationPosition: delivery.destination ? [delivery.destination.lat, delivery.destination.lng] : undefined,
         });
         // Send existing chat messages
         const msgs = chatMessages.get(orderId) || [];
@@ -153,14 +206,14 @@ app.prepare().then(() => {
       let waypoints, fullRoute;
       try {
         console.log('Fetching road route from OSRM...');
-        const routeData = await fetchRoute(STORE.lat, STORE.lng, DESTINATION.lat, DESTINATION.lng);
+        const routeData = await fetchRoute(hubLocation.lat, hubLocation.lng, destination.lat, destination.lng);
         waypoints = routeData.sampled;
         fullRoute = routeData.full;
         console.log(`Got ${fullRoute.length} route points, sampled to ${waypoints.length} waypoints`);
       } catch (err) {
         console.log('OSRM fetch failed, using fallback route:', err.message);
-        waypoints = fallbackRoute;
-        fullRoute = fallbackRoute;
+        fullRoute = buildFallbackRoute(hubLocation.lat, hubLocation.lng, destination.lat, destination.lng);
+        waypoints = fullRoute;
       }
 
       // Start new delivery simulation
@@ -170,6 +223,8 @@ app.prepare().then(() => {
         interval: null,
         waypoints,
         fullRoute,
+        storePosition: [hubLocation.lat, hubLocation.lng],
+        destination,
         startTime: Date.now(),
       };
 
@@ -186,6 +241,8 @@ app.prepare().then(() => {
         eta: Math.ceil(((waypoints.length - 1) * 5) / 60),
         partner: deliveryPartner,
         route: fullRoute,
+        storePosition: delivery.storePosition,
+        destinationPosition: [destination.lat, destination.lng],
       });
       socket.emit('chat-history', { orderId, messages: [] });
 
@@ -216,6 +273,8 @@ app.prepare().then(() => {
             eta,
             partner: deliveryPartner,
             route: fullRoute,
+            storePosition: delivery.storePosition,
+            destinationPosition: delivery.destinationPosition ? [delivery.destinationPosition.lat, delivery.destinationPosition.lng] : undefined,
           });
 
           if (delivery.currentIndex >= waypoints.length - 1) {
@@ -241,6 +300,8 @@ app.prepare().then(() => {
               eta: 0,
               partner: deliveryPartner,
               route: fullRoute,
+              storePosition: delivery.storePosition,
+              destinationPosition: delivery.destination ? [delivery.destination.lat, delivery.destination.lng] : undefined,
             });
           }
         }

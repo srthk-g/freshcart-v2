@@ -39,10 +39,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    const { items, deliveryAddress, deliveryNote } = await request.json();
+    const { items, deliveryAddress, deliveryNote, deliveryLatitude, deliveryLongitude } = await request.json();
     if (!items || items.length === 0) {
       return NextResponse.json({ error: 'No items in order' }, { status: 400 });
     }
+
+    const orderLatitude = typeof deliveryLatitude === 'number' && !Number.isNaN(deliveryLatitude)
+      ? deliveryLatitude
+      : 19.0760;
+    const orderLongitude = typeof deliveryLongitude === 'number' && !Number.isNaN(deliveryLongitude)
+      ? deliveryLongitude
+      : 72.8777;
 
     const db = await getDb();
 
@@ -63,10 +70,18 @@ export async function POST(request: NextRequest) {
       sum + item.price * item.quantity, 0
     );
 
-    // Create order with address and note
+    // Create order with address, selected delivery coordinates, and note
     db.run(
-      'INSERT INTO orders (user_id, total_price, status, delivery_address, delivery_note) VALUES (?, ?, ?, ?, ?)',
-      [Number(sessionId), totalPrice, 'Order Placed', deliveryAddress || '', deliveryNote || '']
+      'INSERT INTO orders (user_id, total_price, status, latitude, longitude, delivery_address, delivery_note) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [
+        Number(sessionId),
+        totalPrice,
+        'Order Placed',
+        orderLatitude,
+        orderLongitude,
+        deliveryAddress || '',
+        deliveryNote || '',
+      ]
     );
 
     // Get the order ID
