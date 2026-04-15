@@ -160,9 +160,7 @@ export default function PartnerDashboard() {
             {trackingData && (
               <div style={{ height: '400px', borderRadius: '12px', overflow: 'hidden' }}>
                 <Map 
-                  lat={trackingData.latitude} 
-                  lng={trackingData.longitude} 
-                  status={trackingData.status}
+                  deliveryPosition={[trackingData.latitude, trackingData.longitude]}
                   route={trackingData.route}
                   storePosition={trackingData.storePosition}
                   destinationPosition={trackingData.destinationPosition}
