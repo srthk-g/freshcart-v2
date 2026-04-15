@@ -19,16 +19,18 @@ export async function POST(request: NextRequest) {
     }
 
     const password_hash = await bcrypt.hash(password, 10);
+    const userRole = (request.url.includes('role=partner') || (await request.clone().json()).role === 'partner') ? 'partner' : 'customer';
+
     db.run(
-      'INSERT INTO users (name, email, phone, password_hash) VALUES (?, ?, ?, ?)',
-      [name, email, phone || '', password_hash]
+      'INSERT INTO users (name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, ?)',
+      [name, email, phone || '', password_hash, userRole]
     );
     saveDb();
 
     // Get the inserted user
-    const result = db.exec('SELECT id, name, email, phone FROM users WHERE email = ?', [email]);
+    const result = db.exec('SELECT id, name, email, phone, role FROM users WHERE email = ?', [email]);
     const row = result[0].values[0];
-    const user = { id: row[0], name: row[1], email: row[2], phone: row[3] };
+    const user = { id: row[0], name: row[1], email: row[2], phone: row[3], role: row[4] };
 
     const response = NextResponse.json({ user }, { status: 201 });
     response.cookies.set('session', String(user.id), {

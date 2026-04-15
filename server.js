@@ -166,8 +166,34 @@ app.prepare().then(() => {
   io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
 
-    socket.on('start-tracking', async ({ orderId, destinationLatitude, destinationLongitude }) => {
-      console.log('Start tracking order:', orderId);
+    socket.on('join-order-room', ({ orderId }) => {
+      socket.join(`order_${orderId}`);
+      if (activeDeliveries.has(orderId)) {
+        const delivery = activeDeliveries.get(orderId);
+        const pos = delivery.waypoints[delivery.currentIndex];
+        const progress = Math.round((delivery.currentIndex / (delivery.waypoints.length - 1)) * 100);
+        const remainingSteps = delivery.waypoints.length - 1 - delivery.currentIndex;
+        const eta = Math.ceil((remainingSteps * 5) / 60);
+        socket.emit('location-update', {
+          orderId,
+          latitude: pos[0],
+          longitude: pos[1],
+          status: delivery.status,
+          progress,
+          eta,
+          partner: deliveryPartner,
+          route: delivery.fullRoute,
+          storePosition: delivery.storePosition,
+          destinationPosition: delivery.destination ? [delivery.destination.lat, delivery.destination.lng] : undefined,
+        });
+        const msgs = chatMessages.get(orderId) || [];
+        socket.emit('chat-history', { orderId, messages: msgs });
+      }
+    });
+
+    socket.on('partner-start-tracking', async ({ orderId, destinationLatitude, destinationLongitude }) => {
+      console.log('Partner started navigation for order:', orderId);
+      socket.join(`order_${orderId}`);
 
       const destination = {
         lat: typeof destinationLatitude === 'number' ? destinationLatitude : 19.1010,
@@ -175,7 +201,7 @@ app.prepare().then(() => {
       };
       const nearestHub = getNearestHub(destination);
       const hubLocation = { lat: nearestHub.lat, lng: nearestHub.lng };
-      console.log(`Dispatching from nearest hub: ${nearestHub.name} (${hubLocation.lat}, ${hubLocation.lng}) to destination (${destination.lat}, ${destination.lng})`);
+      console.log(`Routing Partner -> Hub (${hubLocation.lat}, ${hubLocation.lng}) -> Destination (${destination.lat}, ${destination.lng})`);
 
       // If already tracking this order, send current position + route
       if (activeDeliveries.has(orderId)) {
@@ -202,17 +228,23 @@ app.prepare().then(() => {
         return;
       }
 
-      // Fetch real road route from OSRM
+      // Simulate partner starting from a random 1-2km offset
+      const partnerStart = { 
+        lat: hubLocation.lat - 0.005, 
+        lng: hubLocation.lng - 0.005 
+      };
+
       let waypoints, fullRoute;
       try {
-        console.log('Fetching road route from OSRM...');
-        const routeData = await fetchRoute(hubLocation.lat, hubLocation.lng, destination.lat, destination.lng);
-        waypoints = routeData.sampled;
-        fullRoute = routeData.full;
+        console.log('Fetching road routes from OSRM...');
+        const routeData1 = await fetchRoute(partnerStart.lat, partnerStart.lng, hubLocation.lat, hubLocation.lng);
+        const routeData2 = await fetchRoute(hubLocation.lat, hubLocation.lng, destination.lat, destination.lng);
+        waypoints = [...routeData1.sampled, ...routeData2.sampled];
+        fullRoute = [...routeData1.full, ...routeData2.full];
         console.log(`Got ${fullRoute.length} route points, sampled to ${waypoints.length} waypoints`);
       } catch (err) {
         console.log('OSRM fetch failed, using fallback route:', err.message);
-        fullRoute = buildFallbackRoute(hubLocation.lat, hubLocation.lng, destination.lat, destination.lng);
+        fullRoute = buildFallbackRoute(partnerStart.lat, partnerStart.lng, destination.lat, destination.lng);
         waypoints = fullRoute;
       }
 
@@ -232,11 +264,11 @@ app.prepare().then(() => {
       chatMessages.set(orderId, []);
 
       // Send initial data with full road route
-      socket.emit('location-update', {
+      io.to(`order_${orderId}`).emit('location-update', {
         orderId,
         latitude: waypoints[0][0],
         longitude: waypoints[0][1],
-        status: 'Packed',
+        status: 'Head to Warehouse',
         progress: 0,
         eta: Math.ceil(((waypoints.length - 1) * 5) / 60),
         partner: deliveryPartner,
@@ -244,7 +276,7 @@ app.prepare().then(() => {
         storePosition: delivery.storePosition,
         destinationPosition: [destination.lat, destination.lng],
       });
-      socket.emit('chat-history', { orderId, messages: [] });
+      io.to(`order_${orderId}`).emit('chat-history', { orderId, messages: [] });
 
       // 5-second interval × waypoints = ~5 minutes total
       delivery.interval = setInterval(() => {
@@ -264,7 +296,7 @@ app.prepare().then(() => {
             delivery.status = 'Packed';
           }
 
-          io.emit('location-update', {
+          io.to(`order_${orderId}`).emit('location-update', {
             orderId,
             latitude: pos[0],
             longitude: pos[1],
@@ -280,7 +312,6 @@ app.prepare().then(() => {
           if (delivery.currentIndex >= waypoints.length - 1) {
             clearInterval(delivery.interval);
             delivery.status = 'Delivered';
-            // Auto-send delivery complete message
             const msgs = chatMessages.get(orderId) || [];
             msgs.push({
               id: Date.now(),
@@ -289,9 +320,9 @@ app.prepare().then(() => {
               time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
             });
             chatMessages.set(orderId, msgs);
-            io.emit('chat-message', { orderId, messages: msgs });
+            io.to(`order_${orderId}`).emit('chat-message', { orderId, messages: msgs });
 
-            io.emit('location-update', {
+            io.to(`order_${orderId}`).emit('location-update', {
               orderId,
               latitude: pos[0],
               longitude: pos[1],
@@ -310,31 +341,20 @@ app.prepare().then(() => {
       activeDeliveries.set(orderId, delivery);
     });
 
-    // Handle chat messages from customer
     socket.on('send-message', ({ orderId, text }) => {
       const msgs = chatMessages.get(orderId) || [];
       const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-
-      // Customer message
       msgs.push({ id: Date.now(), sender: 'customer', text, time });
-
-      // Auto-reply from partner after a short delay
-      setTimeout(() => {
-        const replies = [
-          'Got it, thanks! 👍',
-          'Sure, will do! 😊',
-          'No problem, I\'ll keep that in mind.',
-          'Okay, noted!',
-          'Understood, almost there!',
-        ];
-        const reply = replies[Math.floor(Math.random() * replies.length)];
-        msgs.push({ id: Date.now() + 1, sender: 'partner', text: reply, time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) });
-        chatMessages.set(orderId, msgs);
-        io.emit('chat-message', { orderId, messages: msgs });
-      }, 1500 + Math.random() * 2000);
-
       chatMessages.set(orderId, msgs);
-      io.emit('chat-message', { orderId, messages: msgs });
+      io.to(`order_${orderId}`).emit('chat-message', { orderId, messages: msgs });
+    });
+
+    socket.on('send-message-from-partner', ({ orderId, text }) => {
+      const msgs = chatMessages.get(orderId) || [];
+      const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+      msgs.push({ id: Date.now(), sender: 'partner', text, time });
+      chatMessages.set(orderId, msgs);
+      io.to(`order_${orderId}`).emit('chat-message', { orderId, messages: msgs });
     });
 
     socket.on('disconnect', () => {

@@ -10,6 +10,7 @@ export default function SignupPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [isPartner, setIsPartner] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { signup } = useAuth();
@@ -26,9 +27,13 @@ export default function SignupPage() {
       return;
     }
 
-    const result = await signup(name, email, phone, password);
+    const result = await signup(name, email, phone, password, isPartner);
     if (result.success) {
-      router.push('/products');
+      if (isPartner) {
+        router.push('/partner');
+      } else {
+        router.push('/products');
+      }
     } else {
       setError(result.error || 'Signup failed');
     }
@@ -87,6 +92,18 @@ export default function SignupPage() {
               required
               minLength={6}
             />
+          </div>
+          <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
+            <input
+              id="isPartner"
+              type="checkbox"
+              checked={isPartner}
+              onChange={(e) => setIsPartner(e.target.checked)}
+              style={{ width: 'auto', margin: 0 }}
+            />
+            <label htmlFor="isPartner" style={{ margin: 0, fontWeight: 'normal', cursor: 'pointer' }}>
+              Sign up as Delivery Partner
+            </label>
           </div>
           <button type="submit" className="btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px' }} disabled={loading}>
             {loading ? 'Creating account...' : 'Create Account'}

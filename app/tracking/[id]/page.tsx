@@ -112,10 +112,8 @@ export default function TrackingPage() {
     if (!order) return;
     const socket = getSocket();
 
-    socket.emit('start-tracking', {
+    socket.emit('join-order-room', {
       orderId: Number(orderId),
-      destinationLatitude: order.latitude,
-      destinationLongitude: order.longitude,
     });
 
     socket.on('location-update', (data: {

@@ -25,23 +25,43 @@ export default function Navbar() {
         </Link>
 
         <div className="navbar-links">
-          <Link href="/products" className={pathname === '/products' ? 'active' : ''}>
-            Products
-          </Link>
-          {user && (
-            <Link href="/orders" className={pathname === '/orders' ? 'active' : ''}>
-              Orders
+          {(!user || user.role === 'customer') && (
+            <>
+              <Link href="/products" className={pathname === '/products' ? 'active' : ''}>
+                Products
+              </Link>
+              {user && (
+                <Link href="/orders" className={pathname === '/orders' ? 'active' : ''}>
+                  Orders
+                </Link>
+              )}
+            </>
+          )}
+
+          {user?.role === 'manager' && (
+            <Link href="/manager" className={pathname === '/manager' ? 'active' : ''}>
+              Inventory
             </Link>
           )}
+
+          {user?.role === 'partner' && (
+            <Link href="/partner" className={pathname === '/partner' ? 'active' : ''}>
+              Deliveries
+            </Link>
+          )}
+
           <Link href="/support" className={pathname === '/support' ? 'active' : ''}>
             Support
           </Link>
-          <Link href="/cart" className={pathname === '/cart' ? 'active' : ''}>
-            <span className="cart-badge">
-              🛒
-              {totalItems > 0 && <span className="cart-count">{totalItems}</span>}
-            </span>
-          </Link>
+          
+          {(!user || user.role === 'customer') && (
+            <Link href="/cart" className={pathname === '/cart' ? 'active' : ''}>
+              <span className="cart-badge">
+                🛒
+                {totalItems > 0 && <span className="cart-count">{totalItems}</span>}
+              </span>
+            </Link>
+          )}
           {user ? (
             <>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', padding: '8px' }}>

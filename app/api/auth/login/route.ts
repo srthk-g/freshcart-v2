@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     }
 
     const db = await getDb();
-    const result = db.exec('SELECT id, name, email, phone, password_hash FROM users WHERE email = ?', [email]);
+    const result = db.exec('SELECT id, name, email, phone, password_hash, role FROM users WHERE email = ?', [email]);
 
     if (result.length === 0 || result[0].values.length === 0) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
       email: row[2] as string,
       phone: row[3] as string,
       password_hash: row[4] as string,
+      role: row[5] as string,
     };
 
     const valid = await bcrypt.compare(password, user.password_hash);
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     const response = NextResponse.json({
-      user: { id: user.id, name: user.name, email: user.email, phone: user.phone },
+      user: { id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role },
     });
 
     response.cookies.set('session', String(user.id), {

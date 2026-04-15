@@ -20,7 +20,13 @@ export default function LoginPage() {
 
     const result = await login(email, password);
     if (result.success) {
-      router.push('/products');
+      if (result.user?.role === 'manager') {
+        router.push('/manager');
+      } else if (result.user?.role === 'partner') {
+        router.push('/partner');
+      } else {
+        router.push('/products');
+      }
     } else {
       setError(result.error || 'Login failed');
     }
