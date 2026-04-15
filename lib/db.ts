@@ -106,10 +106,10 @@ function initializeDb(database: Database) {
 
   if (managerCount === 0) {
     // Generate a simple bcrypt hash for "manager123"
-    // $2a$10$T1qS4dI.T5H9k8Fj1T4R8OrZ3qV2z7yL8O8bXv5T.w.V/9Y4U3JOS
+    // $2a$10$NB2/mySF138E1qbxC2fwDeN4x5xxUPPtz6KE1jEg4wBPs.xthGsX.
     database.run(
       'INSERT INTO users (name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, ?)',
-      ['Inventory Manager', 'manager@freshcart.com', '0000000000', '$2a$10$vI8aWBnW3fID.ZQ4/zo1G.q1lRps.9cGLcZEiGDI/vCGXq6nUq7b6', 'manager']
+      ['Inventory Manager', 'manager@freshcart.com', '0000000000', '$2a$10$NB2/mySF138E1qbxC2fwDeN4x5xxUPPtz6KE1jEg4wBPs.xthGsX.', 'manager']
     );
   }
 

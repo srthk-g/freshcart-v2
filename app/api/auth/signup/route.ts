@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, email, phone, password } = await request.json();
+    const { name, email, phone, password, role } = await request.json();
 
     if (!name || !email || !password) {
       return NextResponse.json({ error: 'Name, email, and password are required' }, { status: 400 });
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     }
 
     const password_hash = await bcrypt.hash(password, 10);
-    const userRole = (request.url.includes('role=partner') || (await request.clone().json()).role === 'partner') ? 'partner' : 'customer';
+    const userRole = (role === 'partner' || request.url.includes('role=partner')) ? 'partner' : 'customer';
 
     db.run(
       'INSERT INTO users (name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, ?)',
